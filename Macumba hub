@@ -1,0 +1,355 @@
+--[[
+    MACUMBINHAFF HUB
+    Created by: Macumba Sensi
+    Executor Compatibility: Delta, Synapse, Fluxus, Wave
+    Features: Aimbot (Contextual), Aim Kill, Auto Collect/Farm/Spin, ESP (Box/Line/Skel/Items), Fly, Custom UI
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local RootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Configuration State
+local Config = {
+    Aimbot = {
+        Enabled = false,
+        FOV = 150,
+        Smoothness = 0.15,
+        TargetPart = "Head",
+        OnlyWhenWeapon = true,
+        Range = 200
+    },
+    AimKill = {
+        Enabled = false,
+        Radius = 45,
+        Interval = 0.5
+    },
+    AutoCollect = {
+        Enabled = false,
+        Range = 25
+    },
+    AutoFarm = {
+        Enabled = false
+    },
+    AutoSpin = {
+        Enabled = false,
+        Interval = 2
+    },
+    Fly = {
+        Enabled = false,
+        Speed = 10
+    },
+    ESP = {
+        Enabled = false,
+        ShowBox = true,
+        ShowLine = true,
+        ShowSkeleton = true,
+        ShowItems = true,
+        Distance = 300,
+        Color = Color3.fromRGB(0, 255, 127), -- Neon Green
+        Thickness = 2
+    },
+    UI = {
+        ColorTheme = Color3.fromRGB(0, 255, 127),
+        Opacity = 0.85
+    }
+}
+
+-- UI Helper Functions
+local function createScreenGui()
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "Macumbinhaff_Hub"
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.Parent = CoreGui
+    return sg
+end
+
+local function createFrame(parent, props)
+    local f = Instance.new("Frame")
+    f.Name = props.Name or "Frame"
+    f.Size = props.Size or UDim2.new(0, 100, 0, 100)
+    f.Position = props.Position or UDim2.new(0, 0, 0, 0)
+    f.BackgroundColor3 = props.BackgroundColor3 or Color3.fromRGB(20, 20, 20)
+    f.BorderSizePixel = 0
+    f.BackgroundTransparency = props.BackgroundTransparency or 0
+    f.Parent = parent
+    if props.CornerRadius then
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, props.CornerRadius)
+        corner.Parent = f
+    end
+    return f
+end
+
+local function createLabel(parent, props)
+    local lbl = Instance.new("TextLabel")
+    lbl.Name = props.Name or "Label"
+    lbl.Size = props.Size or UDim2.new(1, 0, 0, 20)
+    lbl.Position = props.Position or UDim2.new(0, 0, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = props.Text or "Label"
+    lbl.TextColor3 = props.TextColor3 or Color3.new(1, 1, 1)
+    lbl.Font = props.Font or Enum.Font.GothamMedium
+    lbl.TextSize = props.TextSize or 14
+    lbl.TextXAlignment = props.TextXAlignment or Enum.TextXAlignment.Center
+    lbl.TextYAlignment = props.TextYAlignment or Enum.TextYAlignment.Center
+    lbl.Parent = parent
+    return lbl
+end
+
+local function createButton(parent, props, callback)
+    local btn = Instance.new("TextButton")
+    btn.Name = props.Name or "Button"
+    btn.Size = props.Size or UDim2.new(1, 0, 0, 35)
+    btn.Position = props.Position or UDim2.new(0, 0, 0, 0)
+    btn.BackgroundColor3 = props.BackgroundColor3 or Color3.fromRGB(30, 30, 30)
+    btn.Text = props.Text or "Button"
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 14
+    btn.AutoButtonColor = true
+    btn.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 5)
+    corner.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        callback(btn)
+    end)
+    return btn
+end
+
+local function createSlider(parent, props, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 0, 50)
+    container.BackgroundTransparency = 1
+    container.Parent = parent
+
+    local lbl = createLabel(container, {
+        Size = UDim2.new(1, 0, 0, 20),
+        Text = props.Label,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local valueLbl = createLabel(container, {
+        Size = UDim2.new(1, 0, 0, 20),
+        Position = UDim2.new(0, 0, 0, 15),
+        Text = tostring(props.Value),
+        TextColor3 = Config.UI.ColorTheme,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local sliderBg = createFrame(container, {
+        Size = UDim2.new(1, 0, 0, 8),
+        Position = UDim2.new(0, 0, 0, 35),
+        BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+        CornerRadius = 4
+    })
+
+    local sliderFill = createFrame(sliderBg, {
+        Size = UDim2.new((props.Value - props.Min) / (props.Max - props.Min), 0, 1, 0),
+        BackgroundColor3 = Config.UI.ColorTheme,
+        CornerRadius = 4
+    })
+
+    local sliderBtn = createFrame(sliderBg, {
+        Size = UDim2.new(0, 15, 0, 15),
+        Position = UDim2.new((props.Value - props.Min) / (props.Max - props.Min) - 0.5, 0, 0.5, -7.5),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        CornerRadius = 8
+    })
+
+    local dragging = false
+    sliderBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            while dragging do
+                local mousePos = UserInputService:GetMouseLocation()
+                local framePos = sliderBg.AbsolutePosition
+                local frameSize = sliderBg.AbsoluteSize
+                local x = math.clamp(mousePos.X - framePos.X, 0, frameSize.X)
+                local percent = x / frameSize.X
+                local val = props.Min + percent * (props.Max - props.Min)
+                
+                sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+                sliderBtn.Position = UDim2.new(percent - 0.5, 0, 0.5, -7.5)
+                valueLbl.Text = tostring(math.floor(val))
+                callback(val)
+                
+                RunService.Heartbeat:Wait()
+                if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                    dragging = false
+                end
+            end
+        end
+    end)
+
+    return container
+end
+
+local function createColorPicker(parent, props, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 0, 40)
+    container.BackgroundTransparency = 1
+    container.Parent = parent
+
+    local lbl = createLabel(container, {
+        Size = UDim2.new(1, -50, 1, 0),
+        Text = props.Label,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local colorBtn = createFrame(container, {
+        Size = UDim2.new(0, 40, 1, 0),
+        Position = UDim2.new(1, -40, 0, 0),
+        BackgroundColor3 = props.Color,
+        CornerRadius = 5
+    })
+
+    colorBtn.MouseButton1Click:Connect(function()
+        local palette = {
+            Color3.fromRGB(0, 255, 127),
+            Color3.fromRGB(255, 0, 255),
+            Color3.fromRGB(0, 127, 255),
+            Color3.fromRGB(255, 255, 0),
+            Color3.fromRGB(255, 127, 0),
+            Color3.fromRGB(255, 255, 255)
+        }
+        local currentIdx = table.find(palette, props.Color) or 1
+        local nextIdx = (currentIdx % #palette) + 1
+        local newColor = palette[nextIdx]
+        
+        colorBtn.BackgroundColor3 = newColor
+        callback(newColor)
+    end)
+
+    return container
+end
+
+-- Main UI Construction
+local function buildUI()
+    local sg = createScreenGui()
+    
+    local mainFrame = createFrame(sg, {
+        Name = "MainFrame",
+        Size = UDim2.new(0, 320, 0, 450),
+        Position = UDim2.new(0.5, -160, 0.5, -225),
+        BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+        CornerRadius = 10
+    })
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Config.UI.ColorTheme
+    stroke.Thickness = 2
+    stroke.Parent = mainFrame
+
+    local title = createLabel(mainFrame, {
+        Size = UDim2.new(1, 0, 0, 40),
+        Text = "MACUMBINHAFF HUB",
+        TextColor3 = Config.UI.ColorTheme,
+        Font = Enum.Font.GothamBold,
+        TextSize = 18
+    })
+
+    local subtitle = createLabel(mainFrame, {
+        Size = UDim2.new(1, 0, 0, 20),
+        Position = UDim2.new(0, 0, 0, 35),
+        Text = "by Macumba Sensi",
+        TextColor3 = Color3.new(1, 1, 1),
+        Font = Enum.Font.Gotham,
+        TextSize = 12
+    })
+
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Name = "MenuScroll"
+    scrollFrame.Size = UDim2.new(1, -10, 1, -70)
+    scrollFrame.Position = UDim2.new(0, 5, 0, 60)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.BorderSizePixel = 0
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.ScrollBarImageColor3 = Config.UI.ColorTheme
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scrollFrame.CanvasSize = UDim2.new(0,0,0,0)
+    scrollFrame.Parent = mainFrame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Padding = UDim.new(0, 8)
+    listLayout.Parent = scrollFrame
+
+    -- Helper to create toggle buttons
+    local function createToggle(parent, label, defaultVal, callback)
+        local btn = createButton(parent, {
+            Size = UDim2.new(1, 0, 0, 35),
+            Text = label,
+            BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        }, function()
+            local state = not btn:FindFirstChild("Indicator").Visible
+            btn:FindFirstChild("Indicator").Visible = state
+            callback(state)
+        end)
+
+        local indicator = createFrame(btn, {
+            Name = "Indicator",
+            Size = UDim2.new(0, 10, 0, 10),
+            Position = UDim2.new(1, -20, 0.5, -5),
+            BackgroundColor3 = Config.UI.ColorTheme,
+            CornerRadius = 5,
+            Visible = defaultVal
+        })
+        
+        return btn
+    end
+
+    -- Section: Combat
+    createLabel(scrollFrame, {Text = "COMBAT", TextColor3 = Config.UI.ColorTheme, Font = Enum.Font.GothamBold, TextSize = 14, Size = UDim2.new(1, 0, 0, 20)})
+    
+    createToggle(scrollFrame, "Aimbot", Config.Aimbot.Enabled, function(v) Config.Aimbot.Enabled = v end)
+    createSlider(scrollFrame, {Label = "Aimbot FOV", Min = 50, Max = 300, Value = Config.Aimbot.FOV}, function(v) Config.Aimbot.FOV = v end)
+    createSlider(scrollFrame, {Label = "Aimbot Smooth", Min = 1, Max = 100, Value = Config.Aimbot.Smoothness * 100}, function(v) Config.Aimbot.Smoothness = v / 100 end)
+    createToggle(scrollFrame, "Aim Kill (45m)", Config.AimKill.Enabled, function(v) Config.AimKill.Enabled = v end)
+
+    -- Section: Automation
+    createLabel(scrollFrame, {Text = "AUTOMATION", TextColor3 = Config.UI.ColorTheme, Font = Enum.Font.GothamBold, TextSize = 14, Size = UDim2.new(1, 0, 0, 20)})
+    
+    createToggle(scrollFrame, "Auto Collect", Config.AutoCollect.Enabled, function(v) Config.AutoCollect.Enabled = v end)
+    createToggle(scrollFrame, "Auto Farm Missions", Config.AutoFarm.Enabled, function(v) Config.AutoFarm.Enabled = v end)
+    createToggle(scrollFrame, "Auto Spin", Config.AutoSpin.Enabled, function(v) Config.AutoSpin.Enabled = v end)
+
+    -- Section: Movement
+    createLabel(scrollFrame, {Text = "MOVEMENT", TextColor3 = Config.UI.ColorTheme, Font = Enum.Font.GothamBold, TextSize = 14, Size = UDim2.new(1, 0, 0, 20)})
+    
+    createToggle(scrollFrame, "Fly", Config.Fly.Enabled, function(v) 
+        Config.Fly.Enabled = v
+        if v then
+            Humanoid.WalkSpeed = 16
+            Humanoid.JumpPower = 0
+        else
+            Humanoid.WalkSpeed = 16
+            Humanoid.JumpPower = 50
+        end
+    end)
+    createSlider(scrollFrame, {Label = "Fly Speed", Min = 1, Max = 50, Value = Config.Fly.Speed}, function(v) Config.Fly.Speed = v end)
+
+    -- Section: ESP
+    createLabel(scrollFrame, {Text = "ESP / WALLHACK", TextColor3 = Config.UI.ColorTheme, Font = Enum.Font.GothamBold, TextSize = 14, Size = UDim2.new(1, 0, 0, 20)})
+    
+    createToggle(scrollFrame, "Enable ESP", Config.ESP.Enabled, function(v) Config.ESP.Enabled = v end)
+    createToggle(scrollFrame, "Box ESP", Config.ESP.ShowBox, function(v) Config.ESP.ShowBox = v end)
+    createToggle(scrollFrame, "Line ESP", Config.ESP.ShowLine, function(v) Config.ESP.ShowLine = v end)
+    createToggle(scrollFrame, "Skeleton", Config.ESP.ShowSkeleton, function(v) Config.ESP.ShowSkeleton = v end)
+    createToggle(scrollFrame, "Item ESP", Config.ESP.ShowItems, function(v) Config.ESP.ShowItems = v end)
+    createSlider(scrollFrame, {Label = "ESP Distance", Min = 100, Max = 1000, Value = Config.ESP.Distance}, function(v) Config.
